@@ -22,6 +22,7 @@ export default function Home() {
   const localStreamRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const roomIdRef = useRef(""); // To access latest roomId inside callbacks
+  const iceCandidatesQueueRef = useRef([]);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -46,21 +47,27 @@ export default function Home() {
       setStatus("Incoming Call...");
       await createPeerConnection();
       await peerConnectionRef.current?.setRemoteDescription(new RTCSessionDescription(offer));
+      processQueuedCandidates();
     });
 
     socketRef.current.on("answer", async (answer) => {
       setStatus("In Call");
       setIsInCall(true);
       await peerConnectionRef.current?.setRemoteDescription(new RTCSessionDescription(answer));
+      processQueuedCandidates();
     });
 
     socketRef.current.on("ice-candidate", async (candidate) => {
-      try {
-        if (peerConnectionRef.current && candidate) {
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+      if (candidate) {
+        if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+          try {
+            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.error("Error adding received ice candidate", e);
+          }
+        } else {
+          iceCandidatesQueueRef.current.push(candidate);
         }
-      } catch (e) {
-        console.error("Error adding received ice candidate", e);
       }
     });
 
@@ -74,6 +81,13 @@ export default function Home() {
       cleanupCall(false);
     };
   }, []);
+
+  const processQueuedCandidates = () => {
+    while (iceCandidatesQueueRef.current.length > 0) {
+      const candidate = iceCandidatesQueueRef.current.shift();
+      peerConnectionRef.current?.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error(e));
+    }
+  };
 
   const handleJoinRoom = () => {
     if (roomId.trim() && socketRef.current) {
@@ -180,6 +194,7 @@ export default function Home() {
 
     setIsInCall(false);
     setIncomingCall(false);
+    iceCandidatesQueueRef.current = []; // Clear queue
     setStatus(wasInitiator ? `You ended the call. Joined Room: ${roomIdRef.current}` : `The other person hung up. Joined Room: ${roomIdRef.current}`);
   };
 
