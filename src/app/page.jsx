@@ -101,6 +101,16 @@ export default function Home() {
     pc.ontrack = (event) => {
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = event.streams[0];
+        remoteAudioRef.current.play().catch(e => console.error("Autoplay blocked:", e));
+      }
+    };
+
+    // Monitor connection state to detect mobile network blocks
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "connected") {
+        setStatus("Call Connected Successfully! 🟢");
+      } else if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+        setStatus("Network Blocked: Try same Wi-Fi (TURN needed) 🔴");
       }
     };
 
@@ -123,7 +133,8 @@ export default function Home() {
 
     const pc = peerConnectionRef.current;
     if (pc) {
-      const offer = await pc.createOffer();
+      // Force WebRTC to receive audio even if the PC doesn't have a mic to send
+      const offer = await pc.createOffer({ offerToReceiveAudio: true });
       await pc.setLocalDescription(offer);
       socketRef.current?.emit("offer", {
         roomId: roomIdRef.current,
