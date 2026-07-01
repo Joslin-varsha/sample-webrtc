@@ -23,6 +23,7 @@ export default function Home() {
   const remoteAudioRef = useRef(null);
   const roomIdRef = useRef(""); // To access latest roomId inside callbacks
   const iceCandidatesQueueRef = useRef([]);
+  const [pendingOffer, setPendingOffer] = useState(null);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -42,12 +43,10 @@ export default function Home() {
     });
 
     // 2. Handle incoming WebRTC signaling
-    socketRef.current.on("offer", async (offer) => {
+    socketRef.current.on("offer", (offer) => {
+      setPendingOffer(offer); // Save it until the user clicks Answer
       setIncomingCall(true);
       setStatus("Incoming Call...");
-      await createPeerConnection();
-      await peerConnectionRef.current?.setRemoteDescription(new RTCSessionDescription(offer));
-      processQueuedCandidates();
     });
 
     socketRef.current.on("answer", async (answer) => {
@@ -158,18 +157,25 @@ export default function Home() {
   };
 
   const answerCall = async () => {
-    setStatus("In Call");
+    setStatus("Connecting...");
     setIsInCall(true);
     setIncomingCall(false);
 
+    // Only ask for microphone permission after they click Answer!
+    await createPeerConnection();
+
     const pc = peerConnectionRef.current;
-    if (pc) {
+    if (pc && pendingOffer) {
+      await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+      processQueuedCandidates(); // Process any network paths the caller sent while we were waiting
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socketRef.current?.emit("answer", {
         roomId: roomIdRef.current,
         answer,
       });
+      setPendingOffer(null);
     }
   };
 
