@@ -227,7 +227,7 @@ export default function Home() {
         <div className="bar"></div>
       </div>
 
-      <audio ref={remoteAudioRef} autoPlay />
+      <audio ref={remoteAudioRef} autoPlay playsInline />
     </div>
   );
 }
